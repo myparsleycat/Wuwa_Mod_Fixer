@@ -331,10 +331,10 @@ impl ModFixer {
                 let aero_mode: u8 =
                     if char_name == "RoverFemale" {
                         if self.headless {
-                            // GUI mode: use the selected fix mode directly
+                            // Non-interactive mode: use the selected fix mode directly
                             self.aero_fix_mode
                         } else {
-                            // CLI mode: prompt user
+                            // Interactive CLI mode: prompt user
                             println!();
                             let enabled = Confirm::new(t!(aero_rover_female_eyes_prompt))
                                 .with_default(false)
@@ -1715,7 +1715,7 @@ fn run_interactive(cli_options: CliRunOptions) {
         config_loader::characters(),
         enable_texture_override,
         cli_options.enable_stable_texture,
-        false,
+        cli_options.non_interactive,
         cli_options.aero_fix_mode,
     );
     let result = panic::catch_unwind(|| {
