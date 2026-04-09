@@ -331,10 +331,10 @@ impl ModFixer {
                 let aero_mode: u8 =
                     if char_name == "RoverFemale" {
                         if self.headless {
-                            // GUI mode: use the selected fix mode directly
+                            // Non-interactive mode: use the selected fix mode directly
                             self.aero_fix_mode
                         } else {
-                            // CLI mode: prompt user
+                            // Interactive CLI mode: prompt user
                             println!();
                             let enabled = Confirm::new(t!(aero_rover_female_eyes_prompt))
                                 .with_default(false)
@@ -1447,7 +1447,8 @@ fn detach_console() {
 }
 
 fn main() -> Result<()> {
-    let is_cli = std::env::args().any(|a| a == "--cli");
+    let args: Vec<String> = std::env::args().collect();
+    let is_cli = args.iter().any(|a| a == "--cli");
     #[cfg(target_os = "windows")]
     if !is_cli {
         detach_console();
@@ -1456,19 +1457,21 @@ fn main() -> Result<()> {
     init_logger();
     init_panic_hook();
 
-    let args: Vec<String> = std::env::args().collect();
     let dev = args.iter().any(|a| a == "--dev");
     if dev {
         DEV_MODE.store(true, std::sync::atomic::Ordering::Relaxed);
         eprintln!("[DEV] Dev mode: using local config only, remote fetch disabled");
     }
     if is_cli {
+        let cli_options = parse_cli_run_options(&args)?;
         // CLI mode: use a tokio runtime for async config loading
         let rt = tokio::runtime::Runtime::new()?;
         if dev {
             rt.block_on(config_loader::init_config_local());
         } else {
-            rt.block_on(config_loader::init_config());
+            rt.block_on(config_loader::init_config_with_remote_choice(
+                cli_options.fetch_latest_config,
+            ));
         }
         // Runtime stays alive during CLI interaction (no conflict with iced)
         if !check_version() {
@@ -1476,7 +1479,7 @@ fn main() -> Result<()> {
             return Ok(());
         }
         show_intro();
-        run_interactive();
+        run_interactive(cli_options);
         drop(rt);
     } else {
         // GUI mode: create a temporary runtime ONLY for local config init,
@@ -1596,20 +1599,125 @@ fn show_intro() {
     println!("\n");
 }
 
+#[derive(Debug, Clone, Default)]
+struct CliRunOptions {
+    input_path: Option<String>,
+    enable_texture_override: bool,
+    enable_stable_texture: bool,
+    aero_fix_mode: u8,
+    fetch_latest_config: Option<bool>,
+    non_interactive: bool,
+}
+
+fn parse_cli_run_options(args: &[String]) -> Result<CliRunOptions> {
+    let mut options = CliRunOptions::default();
+    let mut after_cli = false;
+    let mut i = 1;
+
+    while i < args.len() {
+        let arg = &args[i];
+
+        if !after_cli {
+            if arg == "--cli" {
+                after_cli = true;
+            }
+            i += 1;
+            continue;
+        }
+
+        match arg.as_str() {
+            "--dev" => {}
+            "--path" | "-p" => {
+                let Some(path) = args.get(i + 1) else {
+                    return Err(anyhow!("Missing value for {}", arg));
+                };
+                options.input_path = Some(path.clone());
+                options.non_interactive = true;
+                i += 1;
+            }
+            "--texture-override" => {
+                options.enable_texture_override = true;
+                options.enable_stable_texture = false;
+                options.non_interactive = true;
+            }
+            "--stable-texture" => {
+                options.enable_stable_texture = true;
+                options.enable_texture_override = false;
+                options.non_interactive = true;
+            }
+            "--aero-fix" => {
+                options.aero_fix_mode = 1;
+                options.non_interactive = true;
+            }
+            "--aero-fix-mirror" => {
+                options.aero_fix_mode = 2;
+                options.non_interactive = true;
+            }
+            "--fetch-latest-config" => {
+                let Some(value) = args.get(i + 1) else {
+                    return Err(anyhow!("Missing value for {}", arg));
+                };
+                let normalized = value.trim().to_ascii_lowercase();
+                let parsed = match normalized.as_str() {
+                    "y" | "yes" | "true" | "1" => true,
+                    "n" | "no" | "false" | "0" => false,
+                    _ => {
+                        return Err(anyhow!(
+                            "Invalid value for {}: {} (expected y/n)",
+                            arg,
+                            value
+                        ));
+                    }
+                };
+                options.fetch_latest_config = Some(parsed);
+                i += 1;
+            }
+            _ if arg.starts_with('-') => {
+                return Err(anyhow!("Unknown CLI argument: {}", arg));
+            }
+            _ => {
+                if options.input_path.is_none() {
+                    options.input_path = Some(arg.clone());
+                    options.non_interactive = true;
+                } else {
+                    return Err(anyhow!("Unexpected extra positional argument: {}", arg));
+                }
+            }
+        }
+
+        i += 1;
+    }
+
+    Ok(options)
+}
+
 /// 运行交互逻辑
-fn run_interactive() {
-    let input_path = Text::new(t!(input_folder_prompt))
-        .with_default(".")
-        .prompt()
-        .unwrap();
+fn run_interactive(cli_options: CliRunOptions) {
+    let input_path = match cli_options.input_path {
+        Some(path) => path,
+        None => Text::new(t!(input_folder_prompt))
+            .with_default(".")
+            .prompt()
+            .unwrap(),
+    };
 
-    println!("{}", t!(texture_override_note));
-    let enable_texture_override = Confirm::new(t!(texture_override_prompt))
-        .with_default(false)
-        .prompt()
-        .unwrap();
+    let enable_texture_override = if cli_options.non_interactive {
+        cli_options.enable_texture_override
+    } else {
+        println!("{}", t!(texture_override_note));
+        Confirm::new(t!(texture_override_prompt))
+            .with_default(false)
+            .prompt()
+            .unwrap()
+    };
 
-    let fixer = ModFixer::new(config_loader::characters(), enable_texture_override, false, false, 0);
+    let fixer = ModFixer::new(
+        config_loader::characters(),
+        enable_texture_override,
+        cli_options.enable_stable_texture,
+        cli_options.non_interactive,
+        cli_options.aero_fix_mode,
+    );
     let result = panic::catch_unwind(|| {
         let _ = fixer.process_directory(Path::new(&input_path));
         info!("{}", t!(all_done));
@@ -1619,5 +1727,7 @@ fn run_interactive() {
         error!("{}", t!(error_prompt));
     }
 
-    let _ = std::io::stdin().read_line(&mut String::new()); // 等待按键
+    if !cli_options.non_interactive {
+        let _ = std::io::stdin().read_line(&mut String::new()); // 等待按键
+    }
 }
