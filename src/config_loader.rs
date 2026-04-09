@@ -277,22 +277,26 @@ impl std::fmt::Display for ConfigError {
 
 impl std::error::Error for ConfigError {}
 
-pub async fn init_config() -> &'static GlobalConfig {
-    init_config_inner(true, false).await
+pub async fn init_config_with_remote_choice(fetch_latest_config: Option<bool>) -> &'static GlobalConfig {
+    init_config_inner(fetch_latest_config, false).await
 }
 
 /// GUI mode: load local config directly to avoid startup delay
 pub async fn init_config_local() -> &'static GlobalConfig {
-    init_config_inner(false, true).await
+    init_config_inner(Some(false), true).await
 }
 
-async fn init_config_inner(prompt: bool, force_local: bool) -> &'static GlobalConfig {
+async fn init_config_inner(fetch_latest_config: Option<bool>, force_local: bool) -> &'static GlobalConfig {
     let current_ptr = CONFIG_PTR.load(Ordering::SeqCst);
     if !current_ptr.is_null() {
         return unsafe { &*current_ptr };
     }
 
-    let should_load_remote_fetch = if force_local { false } else if prompt { should_load_remote() } else { true };
+    let should_load_remote_fetch = if force_local {
+        false
+    } else {
+        fetch_latest_config.unwrap_or_else(should_load_remote)
+    };
     println!("Loading config...");
 
     let load_start = Instant::now();

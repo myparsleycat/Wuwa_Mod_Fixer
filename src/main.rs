@@ -1463,12 +1463,15 @@ fn main() -> Result<()> {
         eprintln!("[DEV] Dev mode: using local config only, remote fetch disabled");
     }
     if is_cli {
+        let cli_options = parse_cli_run_options(&args)?;
         // CLI mode: use a tokio runtime for async config loading
         let rt = tokio::runtime::Runtime::new()?;
         if dev {
             rt.block_on(config_loader::init_config_local());
         } else {
-            rt.block_on(config_loader::init_config());
+            rt.block_on(config_loader::init_config_with_remote_choice(
+                cli_options.fetch_latest_config,
+            ));
         }
         // Runtime stays alive during CLI interaction (no conflict with iced)
         if !check_version() {
@@ -1476,7 +1479,6 @@ fn main() -> Result<()> {
             return Ok(());
         }
         show_intro();
-        let cli_options = parse_cli_run_options(&args)?;
         run_interactive(cli_options);
         drop(rt);
     } else {
@@ -1603,6 +1605,7 @@ struct CliRunOptions {
     enable_texture_override: bool,
     enable_stable_texture: bool,
     aero_fix_mode: u8,
+    fetch_latest_config: Option<bool>,
     non_interactive: bool,
 }
 
@@ -1649,6 +1652,25 @@ fn parse_cli_run_options(args: &[String]) -> Result<CliRunOptions> {
             "--aero-fix-mirror" => {
                 options.aero_fix_mode = 2;
                 options.non_interactive = true;
+            }
+            "--fetch-latest-config" => {
+                let Some(value) = args.get(i + 1) else {
+                    return Err(anyhow!("Missing value for {}", arg));
+                };
+                let normalized = value.trim().to_ascii_lowercase();
+                let parsed = match normalized.as_str() {
+                    "y" | "yes" | "true" | "1" => true,
+                    "n" | "no" | "false" | "0" => false,
+                    _ => {
+                        return Err(anyhow!(
+                            "Invalid value for {}: {} (expected y/n)",
+                            arg,
+                            value
+                        ));
+                    }
+                };
+                options.fetch_latest_config = Some(parsed);
+                i += 1;
             }
             _ if arg.starts_with('-') => {
                 return Err(anyhow!("Unknown CLI argument: {}", arg));

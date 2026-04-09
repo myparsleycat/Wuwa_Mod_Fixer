@@ -43,6 +43,7 @@ cargo build --release
 | `--cli` | **进入旧版控制台模式**。 |
 | `--dev` | **开发者模式**。强制加载本地配置文件，禁用远程获取逻辑。 |
 | `--path <路径>` / `-p <路径>` | 在 CLI 模式下直接指定处理目录。 |
+| `--fetch-latest-config <y/n>` | 在 CLI 模式下直接决定是否联网获取最新配置，跳过确认提示。 |
 | `--texture-override` | 启用“补全贴图状态”。 |
 | `--stable-texture` | 启用“应用稳定纹理”（与 `--texture-override` 互斥，后者会被关闭）。 |
 | `--aero-fix` | 启用女漂风主眼部修复（TexCoord 模式）。 |
@@ -58,6 +59,9 @@ cargo run -- --dev
 
 # 在 CLI 模式下直接处理指定目录，不再追加询问
 ./Mod_Fixer --cli "C:/Mods/Wuwa" --texture-override
+
+# 在 CLI 模式下直接回答是否联网获取最新配置
+./Mod_Fixer --cli --fetch-latest-config n --path "C:/Mods/Wuwa"
 
 # 也可以显式使用 --path / -p
 ./Mod_Fixer --cli --path "C:/Mods/Wuwa" --stable-texture --aero-fix
@@ -102,6 +106,7 @@ The application supports the following startup arguments:
 | `--cli` | **Enter Legacy Console Mode**. |
 | `--dev` | **Developer Mode**. Forces loading local configuration and disables remote fetch. |
 | `--path <path>` / `-p <path>` | Provide the target directory directly in CLI mode. |
+| `--fetch-latest-config <y/n>` | Decide remote config fetch in CLI mode and skip the confirmation prompt. |
 | `--texture-override` | Enable "Complete Texture States". |
 | `--stable-texture` | Enable "Stable Texture" (mutually exclusive with `--texture-override`; this disables it). |
 | `--aero-fix` | Enable Aero FemaleRover eye fix in TexCoord mode. |
@@ -117,6 +122,9 @@ cargo run -- --dev
 
 # Run CLI mode without interactive prompts
 ./Mod_Fixer --cli "C:/Mods/Wuwa" --texture-override
+
+# Decide remote config fetch directly in CLI mode
+./Mod_Fixer --cli --fetch-latest-config n --path "C:/Mods/Wuwa"
 
 # Or use --path / -p explicitly
 ./Mod_Fixer --cli --path "C:/Mods/Wuwa" --stable-texture --aero-fix
